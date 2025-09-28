@@ -1,0 +1,48 @@
+[package]
+name = "token-agent"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <you@example.com>"]
+description = "Token service for fetching and caching multiple token sources (HTTP, Metadata, OAuth2) with configurable YAML."
+# license = "MIT"
+# repository = "https://github.com/yourorg/token_service"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.42", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12.23", features = ["json", "gzip", "cookies", "stream"] }
+
+# JSON serialization / parsing
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9.33"
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+
+# Logging / tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "json"] }
+
+# Async traits for trait methods
+async-trait = "0.1"
+
+# Caching token (optional if you implement in memory)
+once_cell = "1.17"
+
+# Optional: Unix socket communication
+tokio-stream = "0.1"
+tokio-util = "0.7"
+
+# Optional: YAML schema validation
+schemars = "1.0.4"
+chrono = "0.4.42"
+http = "1.3.1"
+regex = "1.11.3"
+lazy_static = "1.5.0"
+prometheus = "0.14.0"
+jsonwebtoken = "9.3.1"
+use = "0.0.1-pre.0"
+futures = "0.3.31"

@@ -1,0 +1,42 @@
+token-service/
+├── Cargo.toml
+├── src/
+│   ├── main.rs                 # Entry point: setup logging, metrics, DAG scheduler
+│   ├── config/
+│   │   ├── mod.rs              # Public config API
+│   │   ├── loader.rs           # Load & validate YAML, pre-check file/socket permissions
+│   │   └── types.rs            # Typed structs matching YAML (sources, sinks, endpoints)
+│   ├── sources/
+│   │   ├── mod.rs              # Expose Source trait and factory
+│   │   ├── generic_source.rs   # Core facade handling fetch → parse → template → cache
+│   │   ├── metadata.rs         # Metadata-specific helpers
+│   │   ├── http.rs             # Generic HTTP helpers
+│   │   └── oauth2.rs           # OAuth2 client credentials helpers
+│   ├── parse/
+│   │   ├── mod.rs
+│   │   ├── parser.rs
+│   │   └── template.rs         # Multi-source template evaluation
+│   ├── cache/
+│   │   ├── mod.rs
+│   │   └── token_cache.rs      # Token cache with expiration & safety margin
+│   ├── sinks/
+│   │   ├── mod.rs
+│   │   ├── file_sink.rs        # Write token files
+│   │   └── metrics_sink.rs     # Prometheus metrics
+│   ├── endpoints/
+│   │   ├── mod.rs
+│   │   ├── uds.rs              # Unix Domain Socket endpoints
+│   │   └── metrics.rs          # Prometheus HTTP endpoint
+│   ├── dag/
+│   │   ├── mod.rs
+│   │   └── scheduler.rs        # DAG execution for source dependencies
+│   ├── utils/
+│   │   ├── mod.rs
+│   │   ├── logging.rs          # JSON logging + nanoseconds timestamps
+│   │   └── errors.rs           # Custom error types
+│   └── tests/
+│       ├── mod.rs
+│       └── integration.rs      # Integration tests for full token flow
+└── ci/
+    ├── Dockerfile
+    └── build_deb.sh            # CI/CD for building and publishing .deb packages

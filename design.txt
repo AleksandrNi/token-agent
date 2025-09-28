@@ -1,0 +1,34 @@
++-----------------------+       +-----------------------+       +------------------------+
+|     CONFIG YAML       | ----> |  STARTUP PRECHECKS    | ----> |   ENGINE bootstrap     |
+| (sources, sinks, eps) |       | (validate, perms...)  |       | (build DAG, templates) |
++-----------------------+       +-----------------------+       +------------------------+
+                                      |
+                                      v
+                           +---------------------------+
+                           |        ENGINE main       |
+                           |  - Source registry       |
+                           |  - Cache (per source)    |
+                           |  - Inflight coalescer    |
+                           |  - Background refresher  |
+                           |  - Watchers (secrets/sinks) |
+                           +---------------------------+
+                                      |
+                +---------------------+----------------------+
+                |                                            |
+         +------+-------+                             +------+-------+
+         |  SOURCE N    |  <--depends-- DAG --depends--> | SOURCE M   |
+         | (http/oauth) |                              | (http)     |
+         +------+-------+                              +------+------+
+                |                                             |
+               fetch                                     fetch / introspect
+                |                                             |
+        +-------+--------+                         +----------+--------+
+        |  cache & expiry|                         |  cache & expiry   |
+        +-------+--------+                         +----------+--------+
+                |                                             |
+                v                                             v
+   +---------------------------+                +---------------------------+
+   |  SINKS (file atomic writes)|                |  ENDPOINTS (UDS/HTTP)    |
+   |  (write /run/... tokens)   |                |  (expose /token/<name>)  |
+   +---------------------------+                +---------------------------+
+
