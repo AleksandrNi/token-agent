@@ -1,0 +1,101 @@
+name: Build and Release (Ubuntu + macOS, x86_64 + ARM64)
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }} / ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          # --- Ubuntu (x86_64 + ARM64) ---
+          - os: ubuntu
+            runner: ubuntu-latest
+            arch: amd64
+            target: x86_64-unknown-linux-gnu
+            artifact_ext: deb
+          - os: ubuntu
+            runner: ubuntu-latest
+            arch: arm64
+            target: aarch64-unknown-linux-gnu
+            artifact_ext: deb
+
+          # --- macOS (x86_64 + ARM64) ---
+          - os: macos
+            runner: macos-13  # Intel
+            arch: x86_64
+            target: x86_64-apple-darwin
+            artifact_ext: tar.gz
+          - os: macos
+            runner: macos-14  # Apple Silicon
+            arch: arm64
+            target: aarch64-apple-darwin
+            artifact_ext: tar.gz
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install dependencies (Linux only)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            pkg-config libssl-dev build-essential \
+            gcc-aarch64-linux-gnu \
+            libc6-dev-arm64-cross
+          cargo install cargo-deb
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      # --- Debian Package for Ubuntu ---
+      - name: Build .deb package
+        if: startsWith(matrix.os, 'ubuntu')
+        run: cargo deb --no-build --target ${{ matrix.target }}
+
+      # --- TAR.GZ Package for macOS ---
+      - name: Package .tar.gz
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/token-agent dist/
+          cd dist
+          tar -czf ../token-agent_${{ github.ref_name }}_${{ matrix.os }}_${{ matrix.arch }}.tar.gz token-agent
+          cd ..
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: token-agent-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            target/${{ matrix.target }}/debian/*.deb
+            token-agent_${{ github.ref_name }}_${{ matrix.os }}_${{ matrix.arch }}.tar.gz
+
+  release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./release-assets/**/*.*
+          generate_release_notes: true

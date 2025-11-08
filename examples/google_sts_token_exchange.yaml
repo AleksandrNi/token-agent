@@ -1,0 +1,133 @@
+# curl -X POST "https://sts.googleapis.com/v1/token" \
+#      -H "Content-Type: application/json" \
+#      -d '{
+#        "grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
+#        "audience": "//iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID",
+#        "scope": "https://www.googleapis.com/auth/cloud-platform",
+#        "requestedTokenType": "urn:ietf:params:oauth:token-type:access_token",
+#        "subjectTokenType": "urn:ietf:params:oauth:token-type:access_token",
+#        "subjectToken": "<METADATA_TOKEN>"
+#      }'
+# Docs: https://cloud.google.com/iam/docs/reference/sts/rest/v1/TopLevel/token
+#
+# Example response (JSON):
+# {
+#   "access_token": "ya29.c.El...snip...",
+#   "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+#   "token_type": "Bearer",
+#   "expires_in": 3599
+# }
+
+settings:
+  retry:
+    attempts: 4
+    base_delay_ms: 1000
+    max_delay_ms: 5000
+  safety_margin_seconds: 20
+  server:
+    host: ${TOKEN_AGENT_HOST:127.0.0.1}
+    port: ${TOKEN_AGENT_PORT:8080}
+  metrics:
+    path: "/metrics"
+    is_enabled: true
+  logging:
+    level: info
+    format: compact
+
+sources:
+  metadata:
+    type: http
+    request:
+      # url: "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token"
+      url: "${METADATA_URL:http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token}"
+      method: GET
+      headers:
+        "Metadata-Flavor":
+          value: "Google"
+    parse:
+      tokens:
+        - id: metadata_token
+          parent: body
+          pointer: access_token
+          token_type: plain_text
+          expiration:
+            source: json_body_field
+            pointer: expires_in
+            format: seconds
+
+  sts_exchange:
+    type: http
+    inputs: ["metadata"]
+    request:
+      url: "${STS_URL:https://sts.googleapis.com/v1/token}"
+      method: POST
+      headers:
+        "Content-Type":
+          value: "application/json"
+      body:
+        grant_type:
+          value: "urn:ietf:params:oauth:grant-type:token-exchange"
+        audience:
+          value: "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/pool/providers/provider"
+        scope:
+          value: "https://www.googleapis.com/auth/cloud-platform"
+        requested_token_type:
+          value: "urn:ietf:params:oauth:token-type:access_token"
+        subject_token:
+          source: metadata
+          id: metadata_token
+        subject_token_type:
+          value: "urn:ietf:params:oauth:token-type:access_token"
+    parse:
+      tokens:
+        - id: sts_token
+          parent: body
+          pointer: access_token
+          token_type: jwt # expiration will be taken form token
+
+sinks:
+  metadata_http:
+    type: http
+    source_id: metadata
+    path: "/tokens/metadata"
+    token_id: metadata_token
+    response:
+      content_type: "application/json"
+      headers:
+        X-Client-Token:
+          type: token
+      body:
+        token:
+          type: token
+        expires_in:
+          type: expiration
+          format: seconds
+  sts_http:
+    type: http
+    source_id: sts_exchange
+    path: "/tokens/gcp-sts"
+    token_id: sts_token
+    response:
+      content_type: "application/json"
+      headers:
+        X-STSToken:
+          type: token
+      body:
+        token:
+          type: token
+        expires_in:
+          type: expiration
+          format: seconds
+
+
+  metadata_file:
+    type: file
+    source_id: metadata
+    path: "/tmp/metadata_token.token"
+    token_id: metadata_token
+
+  sts_file:
+    type: file
+    source_id: sts_exchange
+    path: "/tmp/sts_exchange.token"
+    token_id: sts_token

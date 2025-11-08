@@ -1,0 +1,35 @@
+{
+  "id": null,
+  "title": "Token Agent Metrics",
+  "uid": "token-agent-dashboard",
+  "version": 1,
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "panels": [
+    {
+      "type": "graph",
+      "title": "Token Fetch Success Rate",
+      "targets": [
+        { "expr": "rate(token_agent_token_fetch_success_total[1m])", "legendFormat": "Success" },
+        { "expr": "rate(token_agent_token_fetch_failure_total[1m])", "legendFormat": "Failure" }
+      ],
+      "id": 1
+    },
+    {
+      "type": "graph",
+      "title": "Token Expiration Countdown",
+      "targets": [
+        { "expr": "token_agent_token_expiration_seconds_remaining", "legendFormat": "{{token_id}}" }
+      ],
+      "id": 2
+    },
+    {
+      "type": "graph",
+      "title": "Retry Attempts per Source",
+      "targets": [
+        { "expr": "rate(token_agent_retry_attempts_total[1m])", "legendFormat": "{{source_id}}" }
+      ],
+      "id": 3
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/computeMetadata/v1/instance/service-accounts/default/token"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "access_token": "ya29.a0AfH6SMD5EXAMPLEo8z7RPL4lEXAMPLE__{{randomValue type='UUID'}}",
+      "expires_in": 60,
+      "token_type": "Bearer"
+    }
+  }
+}

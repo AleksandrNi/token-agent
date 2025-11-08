@@ -1,0 +1,20 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/v1/token"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjdXN0b21fY2xhaW0iOiIiLCJpc3MiOiJodHRwOi8vd3d3LmV4YW1wbGUuY29tIiwic3ViIjoibmFtZSBvZiBjbGFpbSIsImF1ZCI6IkpvaG4gU21pdGgiLCJleHAiOjE3ODI0NjIwMjF9.U8VHj6cIqSMB5ws1iGkS0WJzFsPDtYXJuGEp_WJKy2o",
+      "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+      "token_type": "Bearer",
+      "expires_in": 20000000,
+      "scope": "https://www.googleapis.com/auth/cloud-platform",
+      "ext_expires_in": 20000000
+    }
+  }
+}
