@@ -350,15 +350,15 @@ If a `template` field has `required: true`, the agent will **fail fast** if rend
 
 ### ubuntu x86_64
 ```bash
-wget https://github.com/AleksandrNi/token-agent/releases/download/v0.1.0/token-agent_0.1.0_amd64.deb
-sudo dpkg -i token-agent_0.1.0_amd64.deb
+wget https://github.com/AleksandrNi/token-agent/releases/download/v0.1.0/token-agent_0.1.0-1_amd64.deb
+sudo dpkg -i token-agent_0.1.0-1_amd64.deb
 sudo systemctl enable --now token-agent
 ```
 
 ### ubuntu ARM64
 ```bash
-wget https://github.com/AleksandrNi/token-agent/releases/download/v0.1.0/token-agent_0.1.0_arm64.deb
-sudo dpkg -i token-agent_0.1.0_arm64.deb
+wget https://github.com/AleksandrNi/token-agent/releases/download/v0.1.0/token-agent_0.1.0-1_arm64.deb
+sudo dpkg -i token-agent_0.1.0-1_arm64.deb
 ```
 
 ### macos intell
