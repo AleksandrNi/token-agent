@@ -3,137 +3,296 @@
 # ===================================
 settings:
   retry:
-    attempts: 4
-    base_delay_ms: 200
-    max_delay_ms: 5000
-  safety_margin_seconds: 10
+    attempts: 4               # invariant: positive integer
+    base_delay_ms: 1000       # invariant: >=0. will be mutiply by 2 on every attempt until max_delay_ms 
+    max_delay_ms: 5000        # invariant: >= base_delay_ms. 
+                              # used for token expiration time as limit for invalidating
+  safety_margin_seconds: 20   # invariant: >=0, applied globally if not overridden per source
   server:
-    uds_path: "/run/token-service.sock"
-    permissions: "0600"
-  observability:
-    metrics_endpoint: "/metrics"
-    log_level: "info"
+    # path: "/run/token-service.sock"  # invariant: valid filesystem path
+    host: 127.0.0.1
+    port: 8080
+  metrics:
+    path: "/metrics"           # invariant: must start with '/'
+    is_enabled: true
+  logging:
+    level: info                # allowed: trace, debug, info, warn, error
+    format: compact            # allowed: compact (development), json (production)
 
 # ===================================
-# SOURCES
+# SOURCES - define token sources
 # ===================================
 sources:
-  # Metadata token from cloud VM
   metadata:
-    type: http
+    type: http                           # allowed: http, oauth2, metadata
     request:
-      url: "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token"
-      method: GET
+      # url: "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token"
+      url: "http://localhost:3000/computeMetadata/v1/instance/service-accounts/default/token"
+      method: GET                        # allowed: GET, POST
       headers:
         "Metadata-Flavor":
           value: "Google"
+# ===================================
+# body example
+# ===================================
+    #  
+    # support multiple tokens parsing from single response
+    # with custom token and expiration source definition
+    # source name and must be unique
+    # token id must be unique per source
+    # token can be used:
+    #   1. in sources using {{metadata.metadata_token}} pattern
+    #   example: 
+    # ---------------------------------------------------------------
+    #     headers:
+    #       Authorization:
+    #         template: "Bearer {{metadata.metadata_token}}"
+    #         required: true   
+    # ---------------------------------------------------------------
+    #   2. in sinks
+    #   exaple:
+    # ---------------------------------------------------------------
+    #   sinks:
+    #     metadata_file:
+    #       type: file
+    #       source: metadata
+    #       token_id: metadata_token
+    # ---------------------------------------------------------------
+    # description: 
+    #   metadata        - source name 
+    #   metadata_token  - token id 
+    #
     parse:
-      body:
-        - token: "/access_token"
-        - expires_at:
-            pointer: "/expires_in"
-            type: int
-
-  # CPL token exchanged from metadata token
-  cpl:
+      tokens:
+          # ================================
+          # Plain token from metadata
+          # ================================
+        - id: metadata_token
+          # response block where token placed: one of [header|body]
+          # 
+          parent: body                    # invariant: one of [body, header]
+          pointer: "access_token"         # JSON pointer or header key
+          token_type: plain_text          # allowed: jwt, plain_text
+          # invariant: id must be unique per source
+          expiration:
+            # expiration source
+            # json_body_field   - for json body
+            # header_field      - for header field
+            # manual            - set value directly
+            # self              - value will be extracted from token (supported for jwt)
+            source: json_body_field                 
+            # expiration source pointer
+            # pointer - required if expiration.source [json_body_field|header_field]
+            pointer: "expires_in"
+            format: seconds
+            # manual_ttl_seconds - required if expiration.source [manual]
+            # manual_ttl_seconds: 3600 (epired for and hour)
+  
+  # # # # # # # # # # # # # 
+  # OTHER VALID VARIANTS  #  
+  # # # # # # # # # # # # # 
+  
+  
+  token_exchange_service:
     type: http
-    inputs: ["metadata"]
+    inputs: ["metadata"]                 # dependency on metadata source
     request:
-      url: "https://cpl.internal.local/issueToken"
+      # url: "https://token_exchange_service.internal.local/issueToken"
+      url: "http://localhost:3000/issueToken"
       method: POST
       headers:
         Authorization:
-          sources: ["metadata"]
-          template: "Bearer {{metadata.body.token}}"
-          required: true
+          template: "Bearer {{metadata.metadata_token}}"
+          required: true                 # invariant: fail-fast if header cannot be rendered
         "Content-Type":
           value: "application/json"
       body:
         subject_token:
-          sources: ["metadata"]
-          template: "{{metadata.body.token}}"
+          source: metadata
+          id: metadata_token
+          # template: "{{metadata.metadata_token}}"
         subject_token_type:
           value: "urn:ietf:params:oauth:token-type:access_token"
     parse:
-      body:
-        - token: "/access_token"
-        - expires_at:
-            pointer: "/expires_in"
-            type: int
+      tokens:
+        # ================================
+        # JWT token issued by token_exchange_service
+        # ================================
+        - id: token_exchange_service_token
+          parent: body
+          pointer: "access_token"
+          token_type: jwt                 # parser will extract expiration automatically
+          # invariant: JWT token expiration handled internally, no linked_token_id required
+  # 
+  # client_creds:
+  #   type: oauth2
+  #   grant_type: client_credentials
+  #   request:
+  #     url: "https://idp.example.com/oauth2/token"
+  #     method: POST
+  #     form:
+  #       client_id:
+  #         env: CLIENT_ID
+  #       client_secret:
+  #         path: /etc/secrets/client_secret
+  #       scope:
+  #         value: "metrics.write"
+  #   parse:
+  #     tokens:
+  #       # ================================
+  #       # JWT token from client credentials flow
+  #       # ================================
+  #       - id: client_token_jwt
+  #         parent: body
+  #         pointer: "access_token"
+  #         token_type: jwt
 
-  # Client credentials token (optional multi-source)
-  client_creds:
-    type: oauth2
-    grant_type: client_credentials
-    request:
-      url: "https://idp.example.com/oauth2/token"
-      method: POST
-      form:
-        client_id:
-          env: CLIENT_ID
-        client_secret:
-          file: /etc/secrets/client_secret
-        scope:
-          value: "metrics.write"
-    parse:
-      body:
-        - token: "/access_token"
-        - expires_at:
-            pointer: "/expires_in"
-            type: int
+  #       # ================================
+  #       # Plain token example (alternative)
+  #       # ================================
+  #       - id: client_token_raw
+  #         parent: body
+  #         pointer: "access_token"
+  #         token_type: plain_text
+  #         expiration:
+  #           source: json_body_field
+  #           pointer: "expires_in"
+  #           # linked_token_id automatically inferred to this token
+
+  #       # # ================================
+  #       # # Expiration field if separate
+  #       # # ================================
+  #       # - id: client_expiration
+  #       #   parent: body
+  #       #   pointer: "expires_in"
+  #       #   token_type: expiration
+  #       #   linked_token_id: client_token_raw
+  #       #   # invariant: must link to a valid token id
+  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 
 # ===================================
-# SINKS - write tokens to files
+# SINKS — propagate tokens to files, sockets, or HTTP endpoints
 # ===================================
+# Invariants:
+# - sink_type ∈ ["file", "http", "uds"]
+# - input must reference an existing source id
+# - path must be absolute for "file"/"uds" or relative for "http"
+# - token must reference a valid parsed token id from the input source
+# - expiration.format ∈ ["seconds", "rfc3339", "unix"]
+# - response body/headers define the full structure (format = custom by design)
+# - single global HTTP server port is used for all HTTP sinks (defined in settings.server)
+
 sinks:
-  metadata_file:
-    type: file
-    inputs: ["metadata"]
-    path: "/run/token-service/metadata.token"
-    mode: 0600
+  # --------------------------------------------------
+  # Write plain metadata token (from metadata source) to file
+  # --------------------------------------------------
+  # metadata_file:
+  #   type: file
+  #   source_id: metadata
+  #   path: "/tmp/token_exchange_service.token"
+  #   token_id: metadata_token
 
-  cpl_file:
-    type: file
-    inputs: ["cpl"]
-    path: "/run/token-service/cpl.token"
-    mode: 0600
+  # --------------------------------------------------
+  # Write token_exchange_service token to file (from token_exchange_service source)
+  # --------------------------------------------------
+  # token_exchange_service_file:
+  #   type: file
+  #   source_id: token_exchange_service
+  #   path: "/tmp/token_exchange_service.token"
+  #   token_id: token_exchange_service_token
 
-  client_file:
-    type: file
-    inputs: ["client_creds"]
-    path: "/run/token-service/client.token"
-    mode: 0600
-    watch: true
+  # --------------------------------------------------
+  # Write client credentials token to file
+  # --------------------------------------------------
+  # client_file:
+  #   type: file
+  #   source_id: client_creds
+  #   path: "/run/token-service/client.token"
+  #   token_id: client_token_jwt
 
-# ===================================
-# ENDPOINTS - UDS for local apps + metrics
-# ===================================
-endpoints:
-  metadata_socket:
-    type: uds
-    inputs: ["metadata"]
-    path: "/token/metadata"
+  # --------------------------------------------------
+  # Expose metadata token via UDS (Unix socket)
+  # --------------------------------------------------
+  # metadata_socket:
+  #   type: uds
+  #   source_id: metadata
+  #   path: "/token/metadata"
+  #   token_id: metadata_token
 
-  cpl_socket:
-    type: uds
-    inputs: ["cpl"]
-    path: "/token/cpl"
-
-  client_socket:
-    type: uds
-    inputs: ["client_creds"]
-    path: "/token/client"
-
-  metrics:
+  # --------------------------------------------------
+  # Expose token_exchange_service token via HTTP endpoint
+  # (served through global HTTP server, single port)
+  # --------------------------------------------------
+  token_exchange_service_http:
     type: http
-    path: "/metrics"
+    source_id: token_exchange_service
+    path: "/tokens/token_exchange_service"
+    token_id: token_exchange_service_token
+    response:
+      content_type: "application/json"
+      headers:
+        X-Token:
+          type: token
+          id: token_exchange_service_token
+        X-Env:
+          type: string
+          value: "production"
+      body:
+        access_token:
+          type: token
+          id: token_exchange_service_token
+        token_type:
+          type: string
+          value: "Bearer"
+        #  represents the lifetime in seclonds of the access token, f.e. 3600 meaning that token valid for an hour 
+        expires_in:
+          type: expiration
+          id: token_exchange_service_token
+          format: seconds
 
-# ===================================
-# USAGE EXAMPLES
-# ===================================
-# Multi-source header example:
-# Authorization: "Bearer {{metadata.body.token}}-{{cpl.body.token}}"
-# Optional fallback example:
-# X-Optional-Header: "{{optional_source.body.token}} ?? ''"
-# Fail-fast required header:
-# Authorization.required: true
+  # --------------------------------------------------
+  # Expose client credentials token (JWT) over HTTP
+  # --------------------------------------------------
+  metadata_http:
+    type: http
+    source_id: metadata
+    path: "/tokens/metadata"
+    token_id: metadata_token
+    response:
+      content_type: "application/json"
+      headers:
+        X-Client-Token:
+          type: token
+          id: metadata_token
+      body:
+        jwt_token:
+          type: token
+          id: metadata_token
+        #  refers to using the standardized RFC 3339 format for representing the exact time and date a token expires
+        expires_at:
+          type: expiration
+          id: metadata_token
+          format: seconds  
+  # not found
+  # client_http:
+  #   type: http
+  #   source_id: client_creds
+  #   path: "/tokens/client"
+  #   token_id: client_token_jwt
+  #   response:
+  #     content_type: "application/json"
+  #     headers:
+  #       X-Client-Token:
+  #         type: token
+  #         id: client_token_jwt
+  #     body:
+  #       jwt_token:
+  #         type: token
+  #         id: client_token_jwt
+  #       #  refers to using the standardized RFC 3339 format for representing the exact time and date a token expires
+  #       expires_at:
+  #         type: expiration
+  #         id: client_token_jwt
+  #         format: rfc3339
+

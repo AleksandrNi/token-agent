@@ -1,0 +1,16 @@
+[Unit]
+Description=Token Agent - config-driven token fetching & propagation service
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/token-agent --config /etc/token-agent/config.yaml
+Restart=on-failure
+RestartSec=5
+User=ubuntu
+WorkingDirectory=/usr/local/bin
+Environment=RUST_LOG=info
+StandardOutput=append:/var/log/token-agent.log
+StandardError=append:/var/log/token-agent.err
+
+[Install]
+WantedBy=multi-user.target

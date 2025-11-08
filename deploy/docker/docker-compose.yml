@@ -1,0 +1,60 @@
+version: "3.9"
+
+services:
+  wiremock:
+    image: "wiremock/wiremock:latest" # Use the official WireMock Docker image
+    container_name: wiremock
+    ports:
+      - 8383:8080
+    volumes:
+      - ./wiremock:/home/wiremock # Mount a local directory for mappings and files
+    command: ["--verbose", "--global-response-templating"] # Optional: Add WireMock startup parameters
+
+  token-agent:
+    build:
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile
+    container_name: token-agent
+    environment:
+      - LOG_LEVEL=debug
+      - TOKEN_AGENT_HOST=0.0.0.0
+      - TOKEN_AGENT_PORT=8090
+      # - METADATA_URL=http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token
+      # - METADATA_URL=http://host.docker.internal:4000/computeMetadata/v1/instance/service-accounts/default/token
+      - METADATA_URL=http://wiremock:8080/computeMetadata/v1/instance/service-accounts/default/token
+      # - STS_URL=http://sts.googleapis.com/v1/token
+      - STS_URL=http://wiremock:8080/v1/token
+    ports:
+      - "8090:8090"
+    volumes:
+      # - ../../examples/google_metadata_token.yaml:/etc/token-agent/config.yaml:ro
+      - ../../examples/google_sts_token_exchange.yaml:/etc/token-agent/config.yaml:ro
+      # - ./logs:/var/log/token-agent
+      - ./token-agent/tmp:/tmp
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+    - "9090:9090" 
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    restart: unless-stopped
+    depends_on:
+      - token-agent
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./grafana:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+    restart: unless-stopped
+    depends_on:
+      - prometheus

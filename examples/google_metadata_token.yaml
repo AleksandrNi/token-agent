@@ -1,0 +1,99 @@
+# curl -H "Metadata-Flavor: Google" \
+#      "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token"
+# Docs: https://cloud.google.com/compute/docs/storing-retrieving-metadata#retrieving_a_service_account_token
+#
+# Example response (JSON):
+# {
+#   "access_token": "ya29.a0AfH6SM...snip...",
+#   "expires_in": 3599,
+#   "token_type": "Bearer"
+# }
+
+settings:
+  retry:
+    attempts: 4
+    base_delay_ms: 1000
+    max_delay_ms: 5000
+  safety_margin_seconds: 20
+  server:
+    host: ${TOKEN_AGENT_HOST:127.0.0.1}
+    port: ${TOKEN_AGENT_PORT:8080}
+  metrics:
+    path: "/metrics"
+    is_enabled: true
+  logging:
+    level: info
+    format: compact
+
+sources:
+  metadata:
+    type: http
+    request:
+      # url: "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token"
+      url: "${METADATA_URL:http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token}"
+      method: GET
+      headers:
+        "Metadata-Flavor":
+          value: "Google"
+    parse:
+      tokens:
+        - id: metadata_token
+          parent: body
+          pointer: access_token
+          token_type: plain_text
+          expiration:
+            source: json_body_field
+            pointer: expires_in
+            format: seconds
+
+sinks:
+  metadata_http_seconds:
+    type: http
+    source_id: metadata
+    path: "/tokens/metadata_seconds"
+    token_id: metadata_token
+    response:
+      content_type: "application/json"
+      headers:
+        X-Client-Token:
+          type: token
+      body:
+        token:
+          type: token
+        expires_in:
+          type: expiration
+          format: seconds
+
+  metadata_http_unix:
+    type: http
+    source_id: metadata
+    path: "/tokens/metadata_unix"
+    token_id: metadata_token
+    response:
+      content_type: "application/json"
+      headers:
+        X-Client-Token:
+          type: token
+      body:
+        token:
+          type: token
+        expired_at:
+          type: expiration
+          format: unix
+
+  metadata_http_rfc3330:
+    type: http
+    source_id: metadata
+    path: "/tokens/metadata_rfc3339"
+    token_id: metadata_token
+    response:
+      content_type: "application/json"
+      headers:
+        X-Client-Token:
+          type: token
+      body:
+        token:
+          type: token
+        expired_at:
+          type: expiration
+          format: rfc3339
